@@ -52,7 +52,7 @@ forge install
 forge test
 
 # Deploy (if you want your own instance)
-forge script script/DeployCompact.s.sol --broadcast --verify
+forge script script/DeployRegistry.s.sol --broadcast --verify
 ```
 
 
