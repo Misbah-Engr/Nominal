@@ -15,6 +15,9 @@ contract NominalRegistry is ReentrancyGuard {
     // Chain enumeration
     enum Chain { EVM, SOLANA, SUI, APTOS, NEAR }
     uint8 public constant MAX_CHAINS = 5;
+
+    // Signature format enumeration for domain separation across wallets that cannot sign raw bytes
+    enum SignatureFormat { RAW, UTF8, HASHED }
     
     // Chain constants
     uint8 public constant CHAIN_EVM = 0;
@@ -347,9 +350,10 @@ contract NominalRegistry is ReentrancyGuard {
         uint8 chain,
         bytes memory walletAddress,
         uint256 nonce,
-        uint256 expiry
-    ) internal view returns (bytes memory) {
-        return abi.encodePacked(
+        uint256 expiry,
+        SignatureFormat format
+    ) internal view returns (bytes memory rawBytes, bytes memory signedBytes) {
+        rawBytes = abi.encodePacked(
             "Nominal Registry-v1",
             address(this),
             name,
@@ -359,6 +363,78 @@ contract NominalRegistry is ReentrancyGuard {
             expiry,
             "bind-name"
         );
+
+        if (format == SignatureFormat.RAW) {
+            signedBytes = rawBytes; // sign the raw canonical bytes
+        } else if (format == SignatureFormat.UTF8) {
+            // Structured ASCII / UTF8 canonical string
+            signedBytes = abi.encodePacked(
+                "NR1|contract:", _addressToHex(address(this)),
+                "|fmt:utf8|name:", name,
+                "|chain:", _uintToDec(chain),
+                "|wallet:", _bytesToHex(walletAddress),
+                "|nonce:", _uintToDec(nonce),
+                "|expiry:", _uintToDec(expiry),
+                "|purpose:bind-name"
+            );
+        } else if (format == SignatureFormat.HASHED) {
+            bytes32 h = keccak256(rawBytes);
+            signedBytes = abi.encodePacked(
+                "NR1|contract:", _addressToHex(address(this)),
+                "|fmt:hashhex|hash:", _bytes32ToHex(h),
+                "|purpose:bind-name"
+            );
+        }
+    }
+
+    function _addressToHex(address a) internal pure returns (string memory) {
+        bytes20 data = bytes20(a);
+        bytes memory hexChars = new bytes(2 + 40);
+        hexChars[0] = '0';
+        hexChars[1] = 'x';
+        bytes16 alphabet = 0x30313233343536373839616263646566; // 0-9 a-f
+        for (uint256 i = 0; i < 20; i++) {
+            uint8 b = uint8(data[i]);
+            hexChars[2 + i * 2] = bytes1(alphabet[b >> 4]);
+            hexChars[3 + i * 2] = bytes1(alphabet[b & 0x0f]);
+        }
+        return string(hexChars);
+    }
+
+    function _bytesToHex(bytes memory data) internal pure returns (string memory) {
+        bytes memory hexChars = new bytes(2 + data.length * 2);
+        hexChars[0] = '0';
+        hexChars[1] = 'x';
+        bytes16 alphabet = 0x30313233343536373839616263646566;
+        for (uint256 i = 0; i < data.length; i++) {
+            uint8 b = uint8(data[i]);
+            hexChars[2 + i * 2] = bytes1(alphabet[b >> 4]);
+            hexChars[3 + i * 2] = bytes1(alphabet[b & 0x0f]);
+        }
+        return string(hexChars);
+    }
+
+    function _bytes32ToHex(bytes32 data) internal pure returns (string memory) {
+        bytes memory hexChars = new bytes(2 + 64);
+        hexChars[0] = '0';
+        hexChars[1] = 'x';
+        bytes16 alphabet = 0x30313233343536373839616263646566;
+        for (uint256 i = 0; i < 32; i++) {
+            uint8 b = uint8(data[i]);
+            hexChars[2 + i * 2] = bytes1(alphabet[b >> 4]);
+            hexChars[3 + i * 2] = bytes1(alphabet[b & 0x0f]);
+        }
+        return string(hexChars);
+    }
+
+    function _uintToDec(uint256 v) internal pure returns (string memory) {
+        if (v == 0) return "0";
+        uint256 temp = v;
+        uint256 digits;
+        while (temp != 0) { digits++; temp /= 10; }
+        bytes memory buf = new bytes(digits);
+        while (v != 0) { digits -= 1; buf[digits] = bytes1(uint8(48 + v % 10)); v /= 10; }
+        return string(buf);
     }
 
         // Verify Solana wallet signature  
@@ -369,7 +445,8 @@ contract NominalRegistry is ReentrancyGuard {
         string memory name,
         uint256 nonce,
         uint256 expiry,
-        address signerAddress
+        address signerAddress,
+        SignatureFormat format
     ) internal view returns (bool) {
         require(block.timestamp <= expiry, "Signature expired");
         require(nonce == nonces[signerAddress], "Invalid nonce");
@@ -381,7 +458,7 @@ contract NominalRegistry is ReentrancyGuard {
         bytes memory derivedAddress = _deriveAddressFromPublicKey(CHAIN_SOLANA, publicKey);
         require(keccak256(derivedAddress) == keccak256(walletAddress), "Public key does not match address");
 
-        bytes memory message = _createCanonicalMessage(name, CHAIN_SOLANA, walletAddress, nonce, expiry);
+    (, bytes memory message) = _createCanonicalMessage(name, CHAIN_SOLANA, walletAddress, nonce, expiry, format);
         
         // Extract r and s from 64-byte signature
         require(signature.length == 64, "Invalid signature length");
@@ -414,7 +491,8 @@ contract NominalRegistry is ReentrancyGuard {
         string memory name,
         uint256 nonce,
         uint256 expiry,
-        address signerAddress
+        address signerAddress,
+        SignatureFormat format
     ) internal view returns (bool) {
         require(block.timestamp <= expiry, "Signature expired");
         require(nonce == nonces[signerAddress], "Invalid nonce");
@@ -425,7 +503,7 @@ contract NominalRegistry is ReentrancyGuard {
         bytes memory derivedAddress = _deriveAddressFromPublicKey(CHAIN_SUI, publicKey);
         require(keccak256(derivedAddress) == keccak256(walletAddress), "Public key does not match address");
 
-        bytes memory message = _createCanonicalMessage(name, CHAIN_SUI, walletAddress, nonce, expiry);
+    (, bytes memory message) = _createCanonicalMessage(name, CHAIN_SUI, walletAddress, nonce, expiry, format);
         
         // Extract r and s from signature
         require(signature.length == 64, "Invalid SUI signature length");
@@ -457,7 +535,8 @@ contract NominalRegistry is ReentrancyGuard {
         string memory name,
         uint256 nonce,
         uint256 expiry,
-        address signerAddress
+        address signerAddress,
+        SignatureFormat format
     ) internal view returns (bool) {
         require(block.timestamp <= expiry, "Signature expired");
         require(nonce == nonces[signerAddress], "Invalid nonce");
@@ -468,7 +547,7 @@ contract NominalRegistry is ReentrancyGuard {
         bytes memory derivedAddress = _deriveAddressFromPublicKey(CHAIN_APTOS, publicKey);
         require(keccak256(derivedAddress) == keccak256(walletAddress), "Public key does not match address");
 
-        bytes memory message = _createCanonicalMessage(name, CHAIN_APTOS, walletAddress, nonce, expiry);
+    (, bytes memory message) = _createCanonicalMessage(name, CHAIN_APTOS, walletAddress, nonce, expiry, format);
         
         // Extract r and s from signature
         require(signature.length == 64, "Invalid Aptos signature length");
@@ -500,7 +579,8 @@ contract NominalRegistry is ReentrancyGuard {
         string memory name,
         uint256 nonce,
         uint256 expiry,
-        address signerAddress
+        address signerAddress,
+        SignatureFormat format
     ) internal view returns (bool) {
         require(block.timestamp <= expiry, "Signature expired");
         require(nonce == nonces[signerAddress], "Invalid nonce");
@@ -510,7 +590,7 @@ contract NominalRegistry is ReentrancyGuard {
         bytes memory derivedAddress = _deriveAddressFromPublicKey(uint8(Chain.NEAR), publicKey);
         require(keccak256(derivedAddress) == keccak256(walletAddress), "Public key does not match address");
 
-        bytes memory message = _createCanonicalMessage(name, uint8(Chain.NEAR), walletAddress, nonce, expiry);
+    (, bytes memory message) = _createCanonicalMessage(name, uint8(Chain.NEAR), walletAddress, nonce, expiry, format);
         
         // Near uses Ed25519, so we use the same verification
         require(signature.length == 64, "Invalid Ed25519 signature length");
@@ -578,7 +658,8 @@ contract NominalRegistry is ReentrancyGuard {
         uint8[] memory otherChains,
         uint256[] memory noncesForOtherChains,
         uint256[] memory expiriesForOtherChains,
-        address tokenToPay
+        address tokenToPay,
+        SignatureFormat[] memory signatureFormats
     ) external payable nonReentrant whenNotPaused {
         // Normalize name
         string memory normalizedName = _normalizeName(name);
@@ -589,7 +670,8 @@ contract NominalRegistry is ReentrancyGuard {
             publicKeysForOtherChains.length == otherChainAddresses.length &&
             otherChainAddresses.length == otherChains.length &&
             otherChains.length == noncesForOtherChains.length &&
-            noncesForOtherChains.length == expiriesForOtherChains.length,
+            noncesForOtherChains.length == expiriesForOtherChains.length &&
+            expiriesForOtherChains.length == signatureFormats.length,
             "Array length mismatch"
         );
 
@@ -616,7 +698,7 @@ contract NominalRegistry is ReentrancyGuard {
         for (uint256 i = 0; i < otherChains.length; i++) {
             bool verified = false;
             
-            if (otherChains[i] == uint8(Chain.SOLANA)) {
+        if (otherChains[i] == uint8(Chain.SOLANA)) {
                 verified = _verifySolWallet(
                     otherChainAddresses[i],
                     signaturesForOtherChains[i],
@@ -624,7 +706,8 @@ contract NominalRegistry is ReentrancyGuard {
                     normalizedName,
                     noncesForOtherChains[i],
                     expiriesForOtherChains[i],
-                    allAddresses[i + 1]
+            allAddresses[i + 1],
+            signatureFormats[i]
                 );
             } else if (otherChains[i] == uint8(Chain.SUI)) {
                 verified = _verifySUIWallet(
@@ -634,7 +717,8 @@ contract NominalRegistry is ReentrancyGuard {
                     normalizedName,
                     noncesForOtherChains[i],
                     expiriesForOtherChains[i],
-                    allAddresses[i + 1]
+            allAddresses[i + 1],
+            signatureFormats[i]
                 );
             } else if (otherChains[i] == uint8(Chain.APTOS)) {
                 verified = _verifyAptosWallet(
@@ -644,7 +728,8 @@ contract NominalRegistry is ReentrancyGuard {
                     normalizedName,
                     noncesForOtherChains[i],
                     expiriesForOtherChains[i],
-                    allAddresses[i + 1]
+            allAddresses[i + 1],
+            signatureFormats[i]
                 );
             } else if (otherChains[i] == uint8(Chain.NEAR)) {
                 verified = _verifyNearWallet(
@@ -654,7 +739,8 @@ contract NominalRegistry is ReentrancyGuard {
                     normalizedName,
                     noncesForOtherChains[i],
                     expiriesForOtherChains[i],
-                    allAddresses[i + 1]
+            allAddresses[i + 1],
+            signatureFormats[i]
                 );
             }
             
@@ -688,7 +774,8 @@ contract NominalRegistry is ReentrancyGuard {
         uint8[] memory chains,
         uint256[] memory noncesForChains,
         uint256[] memory expiriesForChains,
-        address tokenToPay
+        address tokenToPay,
+        SignatureFormat[] memory signatureFormats
     ) external payable onlyWalletProvider nonReentrant whenNotPaused {
         // Normalize name
         string memory normalizedName = _normalizeName(name);
@@ -699,7 +786,8 @@ contract NominalRegistry is ReentrancyGuard {
             publicKeys.length == addresses.length &&
             addresses.length == chains.length &&
             chains.length == noncesForChains.length &&
-            noncesForChains.length == expiriesForChains.length,
+            noncesForChains.length == expiriesForChains.length &&
+            expiriesForChains.length == signatureFormats.length,
             "Array length mismatch"
         );
         require(signatures.length > 0, "Empty arrays");
@@ -720,7 +808,7 @@ contract NominalRegistry is ReentrancyGuard {
         for (uint256 i = 0; i < chains.length; i++) {
             bool verified = false;
             
-            if (chains[i] == uint8(Chain.EVM)) {
+        if (chains[i] == uint8(Chain.EVM)) {
                 address evmAddress = address(uint160(bytes20(addresses[i])));
                 verified = _verifyEVMWallet(
                     evmAddress,
@@ -737,7 +825,8 @@ contract NominalRegistry is ReentrancyGuard {
                     normalizedName,
                     noncesForChains[i],
                     expiriesForChains[i],
-                    addressesForDuplicateCheck[i]
+            addressesForDuplicateCheck[i],
+            signatureFormats[i]
                 );
             } else if (chains[i] == uint8(Chain.SUI)) {
                 verified = _verifySUIWallet(
@@ -747,7 +836,8 @@ contract NominalRegistry is ReentrancyGuard {
                     normalizedName,
                     noncesForChains[i],
                     expiriesForChains[i],
-                    addressesForDuplicateCheck[i]
+            addressesForDuplicateCheck[i],
+            signatureFormats[i]
                 );
             } else if (chains[i] == uint8(Chain.APTOS)) {
                 verified = _verifyAptosWallet(
@@ -757,7 +847,8 @@ contract NominalRegistry is ReentrancyGuard {
                     normalizedName,
                     noncesForChains[i],
                     expiriesForChains[i],
-                    addressesForDuplicateCheck[i]
+            addressesForDuplicateCheck[i],
+            signatureFormats[i]
                 );
             } else if (chains[i] == uint8(Chain.NEAR)) {
                 verified = _verifyNearWallet(
@@ -767,7 +858,8 @@ contract NominalRegistry is ReentrancyGuard {
                     normalizedName,
                     noncesForChains[i],
                     expiriesForChains[i],
-                    addressesForDuplicateCheck[i]
+            addressesForDuplicateCheck[i],
+            signatureFormats[i]
                 );
             }
             

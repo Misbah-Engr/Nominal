@@ -89,6 +89,8 @@ contract NominalRegistryTest is Test {
         addresses[3] = abi.encodePacked(bytes32(uint256(0x4444)));
 
         vm.expectRevert("Duplicate addresses");
+        NominalRegistry.SignatureFormat[] memory fmts = new NominalRegistry.SignatureFormat[](4);
+        for (uint i=0;i<4;i++){ fmts[i]=NominalRegistry.SignatureFormat.RAW; }
         registry.registerForSomeone{value: ETH_FEE}(
             "testdupe",
             signatures,
@@ -97,7 +99,8 @@ contract NominalRegistryTest is Test {
             chains,
             nonces,
             expiries,
-            address(0)
+            address(0),
+            fmts
         );
 
         vm.stopPrank();
@@ -130,6 +133,8 @@ contract NominalRegistryTest is Test {
         addresses[3] = abi.encodePacked(dup); // NON-CONSECUTIVE DUPLICATE at positions 1 and 3!
 
         vm.expectRevert("Duplicate addresses");
+    NominalRegistry.SignatureFormat[] memory fmtsAgain = new NominalRegistry.SignatureFormat[](4);
+    for (uint i=0;i<4;i++){ fmtsAgain[i]=NominalRegistry.SignatureFormat.RAW; }
         registry.registerForSomeone{value: ETH_FEE}(
             "testdupe2",
             signatures,
@@ -138,7 +143,8 @@ contract NominalRegistryTest is Test {
             chains,
             nonces,
             expiries,
-            address(0)
+            address(0),
+            fmtsAgain
         );
 
         vm.stopPrank();
@@ -167,6 +173,8 @@ contract NominalRegistryTest is Test {
         // This should NOT revert with "Duplicate addresses" since all addresses are unique
         // But it will fail at signature verification first (which is the expected behavior)
         vm.expectRevert("Public key does not match address");
+        NominalRegistry.SignatureFormat[] memory fmts = new NominalRegistry.SignatureFormat[](3);
+        for (uint i=0;i<3;i++){ fmts[i]=NominalRegistry.SignatureFormat.RAW; }
         registry.registerForSomeone{value: ETH_FEE}(
             "testunique",
             signatures,
@@ -175,7 +183,8 @@ contract NominalRegistryTest is Test {
             chains,
             nonces,
             expiries,
-            address(0)
+            address(0),
+            fmts
         );
 
         vm.stopPrank();
@@ -204,6 +213,8 @@ contract NominalRegistryTest is Test {
         expiries[0] = block.timestamp + 1 hours;
 
         vm.expectRevert("Contract paused");
+        NominalRegistry.SignatureFormat[] memory fmts1 = new NominalRegistry.SignatureFormat[](1);
+        fmts1[0]=NominalRegistry.SignatureFormat.RAW;
         registry.registerName{value: ETH_FEE}(
             "pausedtest",
             signatures,
@@ -212,7 +223,8 @@ contract NominalRegistryTest is Test {
             chains,
             nonces,
             expiries,
-            address(0)
+            address(0),
+            fmts1
         );
 
         vm.stopPrank();
@@ -263,6 +275,7 @@ contract NominalRegistryTest is Test {
         // This should fail because attacker is not a wallet provider
         vm.expectRevert("Not wallet provider");
         vm.prank(attacker);
+        NominalRegistry.SignatureFormat[] memory fmts0 = new NominalRegistry.SignatureFormat[](0);
         registry.registerForSomeone{value: ETH_FEE}(
             "attackertest",
             signatures,
@@ -271,7 +284,8 @@ contract NominalRegistryTest is Test {
             chains,
             nonces,
             expiries,
-            address(0)
+            address(0),
+            fmts0
         );
     }
 
@@ -287,6 +301,7 @@ contract NominalRegistryTest is Test {
         uint256[] memory expiries = new uint256[](0);
 
         vm.expectRevert("Insufficient ETH fee");
+        NominalRegistry.SignatureFormat[] memory fmts8 = new NominalRegistry.SignatureFormat[](0);
         registry.registerName{value: ETH_FEE - 1}( // Insufficient fee
             "underpaidtest",
             signatures,
@@ -295,7 +310,8 @@ contract NominalRegistryTest is Test {
             chains,
             nonces,
             expiries,
-            address(0)
+            address(0),
+            fmts8
         );
 
         vm.stopPrank();
@@ -320,6 +336,7 @@ contract NominalRegistryTest is Test {
         uint256 registryBalanceBefore = testToken.balanceOf(address(registry));
 
         // This should work since we're using valid token payment
+        NominalRegistry.SignatureFormat[] memory fmts10 = new NominalRegistry.SignatureFormat[](0);
         registry.registerName(
             "tokentest",
             signatures,
@@ -328,7 +345,8 @@ contract NominalRegistryTest is Test {
             chains,
             nonces,
             expiries,
-            address(testToken)
+            address(testToken),
+            fmts10
         );
 
         // Verify token was transferred
@@ -368,6 +386,7 @@ contract NominalRegistryTest is Test {
         uint256[] memory expiries = new uint256[](0);
 
         // This should work for EVM-only registration with overpayment
+        NominalRegistry.SignatureFormat[] memory fmts9 = new NominalRegistry.SignatureFormat[](0);
         registry.registerName{value: overpayment}(
             "refundtest",
             signatures,
@@ -376,7 +395,8 @@ contract NominalRegistryTest is Test {
             chains,
             nonces,
             expiries,
-            address(0)
+            address(0),
+            fmts9
         );
 
         // Should only charge the fee and refund the excess
@@ -398,6 +418,8 @@ contract NominalRegistryTest is Test {
         uint256[] memory expiries = new uint256[](2);
 
         vm.expectRevert("Array length mismatch");
+        NominalRegistry.SignatureFormat[] memory fmts2 = new NominalRegistry.SignatureFormat[](2);
+        for (uint i=0;i<2;i++){ fmts2[i]=NominalRegistry.SignatureFormat.RAW; }
         registry.registerForSomeone{value: ETH_FEE}(
             "mismatchtest",
             signatures,
@@ -406,7 +428,8 @@ contract NominalRegistryTest is Test {
             chains,
             nonces,
             expiries,
-            address(0)
+            address(0),
+            fmts2
         );
 
         vm.stopPrank();
@@ -430,6 +453,8 @@ contract NominalRegistryTest is Test {
         expiries[0] = block.timestamp + 1 hours;
 
         vm.expectRevert("Invalid chain");
+        NominalRegistry.SignatureFormat[] memory fmts3 = new NominalRegistry.SignatureFormat[](1);
+        fmts3[0]=NominalRegistry.SignatureFormat.RAW;
         registry.registerName{value: ETH_FEE}(
             "invalidchain",
             signatures,
@@ -438,7 +463,8 @@ contract NominalRegistryTest is Test {
             chains,
             nonces,
             expiries,
-            address(0)
+            address(0),
+            fmts3
         );
 
         vm.stopPrank();
@@ -471,6 +497,8 @@ contract NominalRegistryTest is Test {
 
         // This will fail at crypto-lib verification, but it demonstrates the integration point
         vm.expectRevert(); // Could be various crypto-lib related errors
+        NominalRegistry.SignatureFormat[] memory fmts4 = new NominalRegistry.SignatureFormat[](1);
+        fmts4[0]=NominalRegistry.SignatureFormat.RAW;
         registry.registerName{value: ETH_FEE}(
             "cryptotest",
             signatures,
@@ -479,7 +507,8 @@ contract NominalRegistryTest is Test {
             chains,
             nonces,
             expiries,
-            address(0)
+            address(0),
+            fmts4
         );
 
         vm.stopPrank();
@@ -502,6 +531,7 @@ contract NominalRegistryTest is Test {
         uint256[] memory expiries = new uint256[](0);
 
         vm.expectRevert("Token not allowed");
+        NominalRegistry.SignatureFormat[] memory fmts5 = new NominalRegistry.SignatureFormat[](0);
         registry.registerName(
             "badtoken",
             signatures,
@@ -510,7 +540,8 @@ contract NominalRegistryTest is Test {
             chains,
             nonces,
             expiries,
-            address(badToken) // Unauthorized token!
+            address(badToken), // Unauthorized token!
+            fmts5
         );
 
         vm.stopPrank();
@@ -569,6 +600,7 @@ contract NominalRegistryTest is Test {
         uint256[] memory nonces = new uint256[](0);
         uint256[] memory expiries = new uint256[](0);
 
+        NominalRegistry.SignatureFormat[] memory fmts6 = new NominalRegistry.SignatureFormat[](0);
         registry.registerName{value: ETH_FEE}(
             "takenname",
             signatures,
@@ -577,7 +609,8 @@ contract NominalRegistryTest is Test {
             chains,
             nonces,
             expiries,
-            address(0)
+            address(0),
+            fmts6
         );
         
         vm.stopPrank();

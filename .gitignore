@@ -21,3 +21,6 @@ Thumbs.db
 
 # Dependencies
 node_modules/
+
+# Frontend directory (managed separately)
+frontend/
