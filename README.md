@@ -12,7 +12,7 @@ Instead of sharing `0x742d35Cc6F4F4F4F...` or `DRiP2Ln2P2P2P2P...`, you just tel
 
 We're live on Base Sepolia testnet:
 
-- **Registry Contract**: `0x529AE0a40932f028198a58264636De72AdC674F4`
+- **Registry Contract**: `0xa30481F5624247e0e532502D79C05B46bD41ad33`
 - **NMNL Token**: `0xf3dEceEa57A2335930902d40b77bB60c055e4CA7`
 we will release the testnet webpage soon.
 
