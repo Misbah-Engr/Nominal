@@ -3,20 +3,11 @@ cache/
 out/
 broadcast/
 
-# Environment variables (contains sensitive info)
-.env
-.env.local
-.env.production
-
 # Node.js
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# Documentation (exclude from version control)
-*.md
-!README.md
 
 # IDE
 .vscode/
