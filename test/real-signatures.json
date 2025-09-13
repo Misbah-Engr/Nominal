@@ -1,0 +1,97 @@
+{
+  "timestamp": "2025-09-13T15:54:37.133Z",
+  "contractChainId": 31337,
+  "contractAddress": "0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f",
+  "testCases": {
+    "alice": {
+      "evm": {
+        "signature": "0x6a7a47ce084419c9f5632939a6df0f057482c56a26bf3521c65e94c7c927a32c2e79ff3524cb2a0fa088a6be9664158cfe979c331993d0071e6554a9c6324c8a1b",
+        "hash": "0x93614dce53e4ea4d7bc595574471b01b4f5f6b0d5790b262a8a46f837564d99f",
+        "signer": "0xa98164e3007E53FAda4eE8401e8156070DBEf621",
+        "message": "EIP-712 registration for alice",
+        "valid": true
+      },
+      "solana": {
+        "signature": "0xf551905d18c2ec23ba65788505ba5628309dba04d82c7fae048d33180763aa4042f87ae6c6db1fafd8b42d6473a20bcd06e6be0589167df8382e82d81954300a",
+        "message": "NominalRegistryV2 on 31337 @ 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f | name: alice | chain: 1 | acct: 0xf80774a429641945e19cb2a754a75f77640c4e9e22e722f6c1df3e2a5f2e2452 | nonce: 0 | exp: 3601",
+        "publicKey": "0xf80774a429641945e19cb2a754a75f77640c4e9e22e722f6c1df3e2a5f2e2452",
+        "signer": "0xf80774a429641945e19cb2a754a75f77640c4e9e22e722f6c1df3e2a5f2e2452",
+        "valid": true
+      },
+      "sui": {
+        "signature": "0x919d391ec02234c753770039dd932aebb0c18c27341f0b8bad3905b86b1c08c015ddcc3621cb837e0eea4e3576386bd745aaf9fe1bc3ead36b3ea8c137f60406",
+        "message": "NominalRegistryV2 on 31337 @ 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f | name: alice | chain: 2 | acct: 0x98f700eb470476028f52bbae6e71550d07d91428fdbe21c6a5dbf495404137b4 | nonce: 0 | exp: 3601",
+        "publicKey": "0xde2e7e68464338e26a283d0217f9df7769e8f208d696e66f56d0a543b96306ab",
+        "signer": "0xde2e7e68464338e26a283d0217f9df7769e8f208d696e66f56d0a543b96306ab",
+        "valid": true
+      },
+      "aptos": {
+        "signature": "0x0124e1bfae63a2961eea75173ab53bc72f8af2e6965cd499aeb9330d7e89924be968dfc15fb3eb72fbcf7b42b16a67adb0aa708a188c0cfa479cfa6be885e505",
+        "message": "NominalRegistryV2 on 31337 @ 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f | name: alice | chain: 3 | acct: 0x44e3d793152b807bd63cfa7c1cb80e14465327bb7f10e56b77ba7d97d44545fa | nonce: 0 | exp: 3601",
+        "publicKey": "0xc52b1e14923971463093410971ffdf181945eab1910d1510e118d286ea5e53c1",
+        "signer": "0xc52b1e14923971463093410971ffdf181945eab1910d1510e118d286ea5e53c1",
+        "valid": true
+      }
+    },
+    "bob": {
+      "evm": {
+        "signature": "0x5d4885d54024b11841e37a87ed3f6693bc1c8458027b8b30fd256a13f26738547d043bb37ade3f1d3429c26c84792ba360364d19a49cb7566b539c0b30d91dc21c",
+        "hash": "0xc019509fc469fb4bed4d8e16f2063a6d467ba3053a0f4981112cdf90b0c36213",
+        "signer": "0xfBc93C5f740d70b2EBeB961A9DfeeCACA46d7bEa",
+        "message": "EIP-712 registration for bob",
+        "valid": true
+      },
+      "solana": {
+        "signature": "0xe12c6a206a02a72101402434604d5c43e9ed52b1ebf71d6d689266ff9602c4375baa002b4183adfdfe9dc444f0d144e5ee50554c13346f52429c51fa7659dd0c",
+        "message": "NominalRegistryV2 on 31337 @ 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f | name: bob | chain: 1 | acct: 0x5e0df1a0cbc6f4c1ed2541a0c75a291d2f849e23e119fa4384d5316f0f86ed08 | nonce: 0 | exp: 3601",
+        "publicKey": "0x5e0df1a0cbc6f4c1ed2541a0c75a291d2f849e23e119fa4384d5316f0f86ed08",
+        "signer": "0x5e0df1a0cbc6f4c1ed2541a0c75a291d2f849e23e119fa4384d5316f0f86ed08",
+        "valid": true
+      },
+      "sui": {
+        "signature": "0xf4c8921ee622b6d96cef2e08074d9ccabdc011e4af1fafa8265e580473a55fa1bcdf03e0209d1a8ff6238adcddd040b7044cee9b3bf617c44701dc7078d17204",
+        "message": "NominalRegistryV2 on 31337 @ 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f | name: bob | chain: 2 | acct: 0xf499906f5ce6f58e93b50c646bca52f4e2d5628c30e9bb3944cd306e7a59f275 | nonce: 0 | exp: 3601",
+        "publicKey": "0x5c2bf3ace44f20df38d3c69b9e2b29c496152d51278d1a6cf0a02b6bf4c17cba",
+        "signer": "0x5c2bf3ace44f20df38d3c69b9e2b29c496152d51278d1a6cf0a02b6bf4c17cba",
+        "valid": true
+      },
+      "aptos": {
+        "signature": "0xf477d5ee4c74da22e44da2e515727a47103dcba3e1a1dedbd01698e4cf6c5a0d7d70c274b6ac76782b1f1c0c76091ecf241869decc95036f7aa2bf71513d8306",
+        "message": "NominalRegistryV2 on 31337 @ 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f | name: bob | chain: 3 | acct: 0x3f42540f8d0b030fc17e5675189d50ffd69d89d4838d12d523f62b6ae1efaaab | nonce: 0 | exp: 3601",
+        "publicKey": "0xeeaba053b1ffd920e7890e6d2122e0ca42b9aced96b9d088b42c8db4f996dcda",
+        "signer": "0xeeaba053b1ffd920e7890e6d2122e0ca42b9aced96b9d088b42c8db4f996dcda",
+        "valid": true
+      }
+    },
+    "charlie": {
+      "evm": {
+        "signature": "0x113edd7aa599cc4cc03f353b3c06fb9a8e5250ac4e14a036fe9cbf0af684fe4821a84602924f6b18b8dd1afb15c09d1ccf12bb101170278dc949e936eac03d001b",
+        "hash": "0x4958aa8356b4ef46f810887d077d1b9ae2e1f55eaea5353c8340828c62e1060b",
+        "signer": "0x0DE6941318e2A05183C17a0Db1B30ec78f9c8438",
+        "message": "EIP-712 registration for charlie",
+        "valid": true
+      },
+      "solana": {
+        "signature": "0x840096f67fe476a6e00a9a5e866f4122653f380a7f5c1514b898395d21d1d159991259a984dc600f54f830ee5a19553128d6a286baa5441f610e6a6a86f26907",
+        "message": "NominalRegistryV2 on 31337 @ 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f | name: charlie | chain: 1 | acct: 0xc9e943538942509f3799e4c8cd9cc76db86d1c0a40dd2bce14899512f8550be2 | nonce: 0 | exp: 3601",
+        "publicKey": "0xc9e943538942509f3799e4c8cd9cc76db86d1c0a40dd2bce14899512f8550be2",
+        "signer": "0xc9e943538942509f3799e4c8cd9cc76db86d1c0a40dd2bce14899512f8550be2",
+        "valid": true
+      },
+      "sui": {
+        "signature": "0x9fbaca6fe900689930334024fe2c5c65210780a4ead49f2d96f72e2724a0972a35d254741046ce19b263494a776812008d9ef154fbf80fa1e86a8b1ef4476206",
+        "message": "NominalRegistryV2 on 31337 @ 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f | name: charlie | chain: 2 | acct: 0xe8ab018f77a96c69ad759e2acae99da9b20ce0a2c19b1952c3598a8627a8080c | nonce: 0 | exp: 3601",
+        "publicKey": "0x4ed4063d5d85d154fad1065742a950fd2774e87ff38e96cbc5231103c1779f82",
+        "signer": "0x4ed4063d5d85d154fad1065742a950fd2774e87ff38e96cbc5231103c1779f82",
+        "valid": true
+      },
+      "aptos": {
+        "signature": "0x5f08a326c1d4dcda2990698607f54bbcf0512c9e3f41701f53e62db1f9e4f73baeb2dc5c161946c887a733e748d0e7a7ec0030852d7b1e29a1fc96adab287106",
+        "message": "NominalRegistryV2 on 31337 @ 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f | name: charlie | chain: 3 | acct: 0x13fb05e7dac06ceecb4e619abcc6f675b7433a436a952209da9359c834a24b12 | nonce: 0 | exp: 3601",
+        "publicKey": "0xc323ade4fc2e1a7cc08be756744a4af19b59974438b99fd443bd40295385adbd",
+        "signer": "0xc323ade4fc2e1a7cc08be756744a4af19b59974438b99fd443bd40295385adbd",
+        "valid": true
+      }
+    }
+  }
+}

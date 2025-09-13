@@ -1,0 +1,64 @@
+{
+  "alice-solana": {
+    "chain": 1,
+    "walletAddress": "HhChmMr1v7Y9PpHvp71WN5gKGGnU1fbFLx4UYv41rx6m",
+    "walletAddressHex": "0xf80774a429641945e19cb2a754a75f77640c4e9e22e722f6c1df3e2a5f2e2452",
+    "publicKeyHex": "0xf80774a429641945e19cb2a754a75f77640c4e9e22e722f6c1df3e2a5f2e2452",
+    "signature": "0xaa2f194b0fcf9c246f017e7645ef214fd0cb11ae6ac9ce5c9e968acc06a546cb8cebb97375591230743cc711ecd7e81629cbbe8007b272c889c31d42bc2a5108",
+    "message": "Register alice-solana on chain 1 for 0xf80774a429641945e19cb2a754a75f77640c4e9e22e722f6c1df3e2a5f2e2452 (nonce: 0, expires: 3601)",
+    "nonce": 0,
+    "expiry": 3601
+  },
+  "alice-sui": {
+    "chain": 2,
+    "walletAddress": "0x98f700eb470476028f52bbae6e71550d07d91428fdbe21c6a5dbf495404137b4",
+    "walletAddressHex": "0x98f700eb470476028f52bbae6e71550d07d91428fdbe21c6a5dbf495404137b4",
+    "publicKeyHex": "0xde2e7e68464338e26a283d0217f9df7769e8f208d696e66f56d0a543b96306ab",
+    "signature": "0xc1b2ad7b12085ac91a555a0389f8784e554533cfd80bf7ed4831eb75ae413e3b11b30c8f01274304a1dc2caf4e42a9a95ad544c102e68c15597b3b8317b84a0b",
+    "message": "Register alice-sui on chain 2 for 0x98f700eb470476028f52bbae6e71550d07d91428fdbe21c6a5dbf495404137b4 (nonce: 0, expires: 3601)",
+    "nonce": 0,
+    "expiry": 3601
+  },
+  "alice-aptos": {
+    "chain": 3,
+    "walletAddress": "0x44e3d793152b807bd63cfa7c1cb80e14465327bb7f10e56b77ba7d97d44545fa",
+    "walletAddressHex": "0x44e3d793152b807bd63cfa7c1cb80e14465327bb7f10e56b77ba7d97d44545fa",
+    "publicKeyHex": "0xa20021552a22d3a915269a2063e9f6b34fbc002cb1cb062487a25f3e9d8bc8fc",
+    "signature": "0x226a45eb4ff637638144f495dd354632a65a82653093a1e14907aaed388b7a97a8a6f76e8c11805d730b35ad0e500021eec47082ce586f7cd471aee393bac803",
+    "message": "Register alice-aptos on chain 3 for 0x44e3d793152b807bd63cfa7c1cb80e14465327bb7f10e56b77ba7d97d44545fa (nonce: 0, expires: 3601)",
+    "nonce": 0,
+    "expiry": 3601
+  },
+  "alice-event-test": {
+    "chain": 0,
+    "walletAddress": "0xa98164e3007E53FAda4eE8401e8156070DBEf621",
+    "signature": "0xa93d4a8390b64c2fe3c07ea63ba0ddf3356889504c0658e4e219278f2803fd5c0ee7309123fb8658c1b485141a6552553bec4f4757cb5e5df1772c84dcf9c9f11c",
+    "messageHash": "0xea1c85f1f62713a7b93e2a97f5f024b96e17e90d9921014531686532a65f7f7d",
+    "nonce": 0,
+    "expiry": 3601
+  },
+  "alice-nonce-test": {
+    "chain": 0,
+    "walletAddress": "0xa98164e3007E53FAda4eE8401e8156070DBEf621",
+    "signature": "0xbfbc86802b8c81fbb135c68fbcc07c43b67bd3920500f2a2fc7449912a4a3d1a2baa22bf054367b09eb65cf5650d5f979152c8f1149d1ba9ba9dbaab8dcde21b1c",
+    "messageHash": "0x0e7219c4529af3882492648eeff4c278a3a929e3ed279cb4b67306a6bf13281a",
+    "nonce": 0,
+    "expiry": 3601
+  },
+  "alice-payment-test": {
+    "chain": 0,
+    "walletAddress": "0xa98164e3007E53FAda4eE8401e8156070DBEf621",
+    "signature": "0xf213d0d0d6e10d3b51b6ee16d5592c9e75727c9c883f5695f03d44d8b50352b459281fec517343996474d7b06dfeaa086d9cd67a4198f5b6982c6b6de8f2a1c41c",
+    "messageHash": "0xbcea5e2e48942c3512d1e09ef6d7db7d961e0a0ec04a91bbd72d6fda5c0227b6",
+    "nonce": 0,
+    "expiry": 3601
+  },
+  "bob": {
+    "chain": 0,
+    "walletAddress": "0xfBc93C5f740d70b2EBeB961A9DfeeCACA46d7bEa",
+    "signature": "0xc2d950df41a543300ef27b209bb48a4fd02e54e60d64ba3e5bf9c6ab277d970748691661f64e218e52efcb5910a8aa826b34fde86707cf46cf60f8405e13ce101c",
+    "messageHash": "0x8823a307622d17ae30bb271bbeaf352eb65b1d5b851c4bfc21e28ec6fbfac0ed",
+    "nonce": 0,
+    "expiry": 3601
+  }
+}
