@@ -12,25 +12,28 @@ Instead of sharing `0x742d35Cc6F4F4F4F...` or `DRiP2Ln2P2P2P2P...`, you just tel
 
 We're live on Base Sepolia testnet:
 
-- **Registry Contract**: `0xa30481F5624247e0e532502D79C05B46bD41ad33`
-- **NMNL Token**: `0xf3dEceEa57A2335930902d40b77bB60c055e4CA7`
+- **NominalRegistryV2**: `0x82cB475405B75848AA6416b53ad4001BD1DA8942` - Multi-chain naming registry
+- **NominalUSD Faucet**: `0x7016FcE7411CE7759c516B8E2d6Fcc40910d2017` - Test token (NUSD) with 5-hour cooldown faucet
+
 we will release the testnet webpage soon.
 
 ## How it works
 
 1. **Register your name** - Pick something memorable 
-2. **Link your wallets** - Connect addresses from any supported chain
+2. **Link your wallets** - Connect addresses from any supported chain with cryptographic proof
 3. **Share one name** - People can find all your addresses through one simple name
 
-You can pay with ETH or any supported ERC20 token on Base.
+You can pay with ETH (0.001 ETH) or NominalUSD tokens (5 NUSD) on Base Sepolia. The faucet gives you 20 NUSD every 5 hours for testing.
 
 ## Tech stuff
 
-- Built with Solidity 0.8.19
-- Uses Foundry for development
+- Built with Solidity 0.8.30
+- Uses Foundry for development  
+- On-chain Ed25519 signature verification for non-EVM chains using crypto-lib
 - Cross-chain signature verification with crypto-lib (A library audited by Veridise and Crypto Experts. We want to get the part we used reaudited again before mainnet)
-- EIP-712 signatures for security
-- Supports referral fees (because why not share the love?)
+- EIP-712 signatures for EVM chains
+- Multi-chain canonical account derivation (Sui uses blake2b, others use direct addressing)
+- Supports referral fees (20% configurable for wallet providers)
 
 ## Supported chains
 
@@ -52,13 +55,15 @@ forge install
 forge test
 
 # Deploy (if you want your own instance)
-forge script script/DeployRegistry.s.sol --broadcast --verify
+forge script script/DeployBaseSepolia.s.sol --broadcast --verify
 ```
 
 
 ## Security
 
-Every wallet signature is verified using the appropriate cryptographic scheme for each blockchain. We don't mess around with security - all validations are preserved even after optimization. We will get audits soon.
+Every wallet signature is verified using the appropriate cryptographic scheme for each blockchain. We don't mess around with security - all validations are preserved even after optimization. 
+
+**Important:** The contract only uses the safe verification functions from the crypto library. Dangerous functions that handle secret keys are excluded from production code, following the library's security guidelines. We will get audits soon.
 
 ## Contributing
 

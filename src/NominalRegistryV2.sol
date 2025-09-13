@@ -7,7 +7,6 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import {SCL_EIP6565} from "../lib/crypto-lib/src/lib/libSCL_EIP6565.sol";
-import {SCL_EIP6565_UTILS} from "../lib/crypto-lib/src/lib/libSCL_eddsaUtils.sol";
 import {SCL_sha512} from "../lib/crypto-lib/src/hash/SCL_sha512.sol";
 import {ModInv} from "../lib/crypto-lib/src/modular/SCL_modular.sol";
 import {SqrtMod} from "../lib/crypto-lib/src/modular/SCL_sqrtMod_5mod8.sol";
@@ -99,10 +98,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
     }
 
     function getDomainSeparator() external view returns (bytes32) { return DOMAIN_SEPARATOR; }
-
-    function getLibrarySetKey(uint256 secret) external returns (uint256[5] memory extKpub, uint256[2] memory signer) {
-        return SCL_EIP6565_UTILS.SetKey(secret);
-    }
 
     // Core
 
