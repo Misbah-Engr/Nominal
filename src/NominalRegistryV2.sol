@@ -12,6 +12,26 @@ import {ModInv} from "../lib/crypto-lib/src/modular/SCL_modular.sol";
 import {SqrtMod} from "../lib/crypto-lib/src/modular/SCL_sqrtMod_5mod8.sol";
 import {p, n, d} from "../lib/crypto-lib/src/fields/SCL_wei25519.sol";
 
+library SuiIntent {
+    function _uleb128(uint256 v) internal pure returns (bytes memory out) {
+        while (true) {
+            uint8 b = uint8(v & 0x7f);
+            v >>= 7;
+            if (v != 0) b |= 0x80;
+            out = abi.encodePacked(out, bytes1(b));
+            if (v == 0) break;
+        }
+    }
+    function wrap(bytes memory raw) internal pure returns (bytes memory) {
+        // intent scope [0,0,0] + ULEB(len) + raw (what dapp-kit signs)
+        return abi.encodePacked(bytes3(0x000000), _uleb128(raw.length), raw);
+    }
+    function wrapSimple(bytes memory raw) internal pure returns (bytes memory) {
+        // some wallets: scope only + raw (legacy/simple)
+        return abi.encodePacked(bytes3(0x000000), raw);
+    }
+}
+
 /**
  * @title NominalRegistryV2
  * @notice A multi-chain naming registry with cryptographic verification for wallet ownership
@@ -204,7 +224,12 @@ contract NominalRegistryV2 is ReentrancyGuard {
         if (chainId == CHAIN_EVM) {
             _verifyEVMSignature(name, chainId, walletAddress, nonceVal, expiry, signature);
         } else if (chainId == CHAIN_SUI) {
-            _verifySuiMultiScheme(name, chainId, canonical, publicKey, signature, nonceVal, expiry, walletAddress);
+            // Build the SAME raw message the frontend fetched via debugGetDomainBoundMessage(...)
+            bytes memory raw = bytes(_createDomainBoundMessage(name, chainId, walletAddress, nonceVal, expiry));
+
+            // signature is 64B R||S, pubkey is 32B raw Ed25519
+            bool ok = _verifySuiAll(raw, signature, publicKey);
+            if (!ok) revert InvalidSignature();
         } else if (chainId == CHAIN_APTOS) {
             _verifyAptos(name, chainId, canonical, publicKey, signature, nonceVal, expiry);
         } else {
@@ -439,6 +464,18 @@ contract NominalRegistryV2 is ReentrancyGuard {
         uint256 x2 = mulmod(numerator, denominatorInv, p);
         x = SqrtMod(x2);
         if ((x & 1) != sign) { x = p - x; }
+    }
+
+    function _verifySuiAll(bytes memory raw, bytes memory sig64, bytes memory pubkey32) internal returns (bool) {
+        // try raw
+        if (_ed25519VerifyNoRevert(string(raw), sig64, pubkey32)) return true;
+        // try intent (scope + uleb + raw)
+        bytes memory intent = SuiIntent.wrap(raw);
+        if (_ed25519VerifyNoRevert(string(intent), sig64, pubkey32)) return true;
+        // try simple (scope + raw)
+        bytes memory simple = SuiIntent.wrapSimple(raw);
+        if (_ed25519VerifyNoRevert(string(simple), sig64, pubkey32)) return true;
+        return false;
     }
 
     // SUI (BLAKE2b-256 via EIP-152)
