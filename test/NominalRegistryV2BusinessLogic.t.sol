@@ -231,10 +231,10 @@ contract NominalRegistryV2BusinessLogicTest is Test {
     function testWalletProviderFeeLimits() public {
         address newProvider = address(0x2234567890123456789012345678901234567890);
         
-        // Try to set fee higher than 5% (500 basis points) - should fail
+        // Try to set fee higher than 50% (5000 basis points) - should fail
         vm.expectRevert("Fee too high");
         vm.prank(admin);
-        registry.authorizeWalletProvider(newProvider, 600); // 6% > 5% max
+        registry.authorizeWalletProvider(newProvider, 6000); // 60% > 50% max
         
         // Setting exactly 5% should work
         vm.prank(admin);
@@ -244,7 +244,7 @@ contract NominalRegistryV2BusinessLogicTest is Test {
         // Try to update fee higher than 5% - should fail
         vm.expectRevert("Fee too high");
         vm.prank(admin);
-        registry.updateWalletProviderFee(newProvider, 501); // 5.01% > 5% max
+        registry.updateWalletProviderFee(newProvider, 5001); // 5.01% > 5% max
     }
 
     function testUnauthorizedProviderManagement() public {

@@ -20,5 +20,5 @@ Thumbs.db
 # Logs
 *.log
 
-# Frontend directory (managed separately if exists)
+# Frontend directory
 frontend/
