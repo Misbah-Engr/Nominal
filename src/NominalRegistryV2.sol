@@ -22,13 +22,12 @@ library SuiIntent {
             if (v == 0) break;
         }
     }
+    // PersonalMessage scope: 0x03 00 00
     function wrap(bytes memory raw) internal pure returns (bytes memory) {
-        // intent scope [0,0,0] + ULEB(len) + raw (what dapp-kit signs)
-        return abi.encodePacked(bytes3(0x000000), _uleb128(raw.length), raw);
+        return abi.encodePacked(bytes1(0x03), bytes1(0x00), bytes1(0x00), _uleb128(raw.length), raw);
     }
     function wrapSimple(bytes memory raw) internal pure returns (bytes memory) {
-        // some wallets: scope only + raw (legacy/simple)
-        return abi.encodePacked(bytes3(0x000000), raw);
+        return abi.encodePacked(bytes1(0x03), bytes1(0x00), bytes1(0x00), raw);
     }
 }
 
@@ -59,14 +58,14 @@ contract NominalRegistryV2 is ReentrancyGuard {
     bool public paused;
     address public pendingOwner;
 
-    // For Aptos, wallets must convert public key to wallet address off-chain
     mapping(string => mapping(uint8 => bytes)) public nameToChainAddress;
     mapping(bytes32 => string) public addressToName;
 
     mapping(string => address) public nameToEvmAddress;
     mapping(address => string) public evmAddressToName;
 
-    // Nonces keyed by canonical identity (EVM: 20B addr; Solana: 32B pubkey; Sui: 32B addr; Aptos: 32B pubkey)
+    // Nonces keyed by canonical identity:
+    // EVM: 20B addr; Solana: 32B pubkey; Sui: 32B addr digest; Aptos: 32B pubkey
     mapping(uint8 => mapping(bytes => uint256)) public chainNonces;
 
     mapping(address => bool) public authorizedWalletProviders;
@@ -145,7 +144,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
 
         _processPayment(paymentToken, referrer);
 
-        // Constrain stack by scoping temps
         bytes memory canonical;
         {
             canonical = _canonicalAccountBytesOrRevert(chainId, walletAddress, publicKey);
@@ -153,7 +151,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
             _storeRegistrationCanonical(name, chainId, walletAddress, canonical);
         }
 
-        // Emit after temp scope is gone
         emit NameRegistered(name, chainId, nameToChainAddress[name][chainId], msg.sender);
     }
 
@@ -224,10 +221,8 @@ contract NominalRegistryV2 is ReentrancyGuard {
         if (chainId == CHAIN_EVM) {
             _verifyEVMSignature(name, chainId, walletAddress, nonceVal, expiry, signature);
         } else if (chainId == CHAIN_SUI) {
-            // Build the SAME raw message the frontend fetched via debugGetDomainBoundMessage(...)
-            bytes memory raw = bytes(_createDomainBoundMessage(name, chainId, walletAddress, nonceVal, expiry));
-
-            // signature is 64B R||S, pubkey is 32B raw Ed25519
+            // --- SUI ONLY: use compact message (≤128 bytes) ---
+            bytes memory raw = bytes(_createDomainBoundMessageSuiCompact(canonical, nonceVal, expiry));
             bool ok = _verifySuiAll(raw, signature, publicKey);
             if (!ok) revert InvalidSignature();
         } else if (chainId == CHAIN_APTOS) {
@@ -272,21 +267,19 @@ contract NominalRegistryV2 is ReentrancyGuard {
     ) internal returns (bool) {
         if (signature.length != 64 || publicKey.length != 32) revert InvalidSignature();
 
-        // Pass R and S as loaded; lib Verify_LE handles LE semantics internally.
         uint256 r; uint256 s;
         assembly {
             r := mload(add(signature, 0x20))
             s := mload(add(signature, 0x40))
         }
-        // No Swap256 on r/s, and no numeric S<n check (endianness mismatch).
-        
+
         uint256[5] memory extKpub;
         if (!_setupExtKpubFromCompressedKey(publicKey, extKpub)) revert InvalidSignature();
         if (!SCL_EIP6565.Verify_LE(message, r, s, extKpub)) revert InvalidSignature();
         return true;
     }
 
-    // Non-reverting Ed25519 verifier used for trying alternate encodings (e.g., Sui/Aptos intent messages).
+    // Non-reverting Ed25519 verifier for alternate encodings
     function _ed25519VerifyNoRevert(
         string memory message,
         bytes memory signature,
@@ -310,6 +303,10 @@ contract NominalRegistryV2 is ReentrancyGuard {
         uint256 nonceVal,
         uint256 expiry
     ) external view returns (string memory) {
+        // Return compact preview for SUI only; others keep verbose message
+        if (chainId == CHAIN_SUI) {
+            return _createDomainBoundMessageSuiCompact(canonicalAccount, nonceVal, expiry);
+        }
         return _createDomainBoundMessage(name, chainId, canonicalAccount, nonceVal, expiry);
     }
 
@@ -350,25 +347,20 @@ contract NominalRegistryV2 is ReentrancyGuard {
         uint256 nonceVal,
         uint256 expiry
     ) internal {
-        // Base message we show to users and expose via debugGetDomainBoundMessage
         string memory base = _createDomainBoundMessage(name, chainId, canonical, nonceVal, expiry);
 
-        // 0) Some dev setups may sign raw `base`
         if (_ed25519VerifyNoRevert(base, signature, publicKey)) return;
 
-        // 1) AIP-62 canonical (common): "APTOS\nmessage: <base>\nnonce: <nonce>"
         string memory fm1 = string(
             abi.encodePacked("APTOS\nmessage: ", base, "\nnonce: ", Strings.toString(nonceVal))
         );
         if (_ed25519VerifyNoRevert(fm1, signature, publicKey)) return;
 
-        // 2) Variant: "APTOS\nnonce: <nonce>\nmessage: <base>"
         string memory fm2 = string(
             abi.encodePacked("APTOS\nnonce: ", Strings.toString(nonceVal), "\nmessage: ", base)
         );
         if (_ed25519VerifyNoRevert(fm2, signature, publicKey)) return;
 
-        // 3) Space-separated legacy seen in some adapters
         string memory fm3 = string(
             abi.encodePacked("APTOS nonce: ", Strings.toString(nonceVal), " message: ", base)
         );
@@ -395,9 +387,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
         }
         if (chainId == CHAIN_SUI) {
             if (walletAddress.length != 32) revert InvalidAddress();
-            // We accept Ed25519 (32B) or secp (64/65B) pubkeys; equality to walletAddress
-            // is enforced inside _verifySuiMultiScheme. Canonical for Sui is the 32B address digest.
-            return walletAddress;
+            return walletAddress; // canonical = 32B Sui address digest
         }
         if (chainId == CHAIN_APTOS) {
             if (publicKey.length != 32) revert InvalidAddress();
@@ -429,7 +419,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
         if (chainId == CHAIN_APTOS || chainId == CHAIN_SUI) {
             nameToChainAddress[name][chainId] = canonical;
             addressToName[keccak256(abi.encodePacked(chainId, canonical))] = name;
-            if (chainId == CHAIN_EVM) { /* none */ }
         } else {
             _storeRegistration(name, chainId, walletAddress);
         }
@@ -467,14 +456,27 @@ contract NominalRegistryV2 is ReentrancyGuard {
     }
 
     function _verifySuiAll(bytes memory raw, bytes memory sig64, bytes memory pubkey32) internal returns (bool) {
-        // try raw
+        // Preimage candidates
         if (_ed25519VerifyNoRevert(string(raw), sig64, pubkey32)) return true;
-        // try intent (scope + uleb + raw)
-        bytes memory intent = SuiIntent.wrap(raw);
+        bytes memory intent = SuiIntent.wrap(raw);          // 0x03 00 00 + ULEB + raw
         if (_ed25519VerifyNoRevert(string(intent), sig64, pubkey32)) return true;
-        // try simple (scope + raw)
-        bytes memory simple = SuiIntent.wrapSimple(raw);
+        bytes memory simple = SuiIntent.wrapSimple(raw);    // 0x03 00 00 + raw
         if (_ed25519VerifyNoRevert(string(simple), sig64, pubkey32)) return true;
+
+        // Digest candidates (only valid when ≤128 bytes because of single-block hasher)
+        if (raw.length <= 128) {
+            bytes memory hRaw    = abi.encodePacked(_blake2b256_singleBlock(raw));
+            if (_ed25519VerifyNoRevert(string(hRaw), sig64, pubkey32)) return true;
+        }
+        if (intent.length <= 128) {
+            bytes memory hIntent = abi.encodePacked(_blake2b256_singleBlock(intent));
+            if (_ed25519VerifyNoRevert(string(hIntent), sig64, pubkey32)) return true;
+        }
+        if (simple.length <= 128) {
+            bytes memory hSimple = abi.encodePacked(_blake2b256_singleBlock(simple));
+            if (_ed25519VerifyNoRevert(string(hSimple), sig64, pubkey32)) return true;
+        }
+
         return false;
     }
 
@@ -484,47 +486,41 @@ contract NominalRegistryV2 is ReentrancyGuard {
         if (pubkey.length != 32) revert InvalidAddress();
         bytes memory inBuf = new bytes(33);
         inBuf[0] = 0x00; // Ed25519 flag
-        // copy 32B pubkey
         for (uint256 i = 0; i < 32; i++) { inBuf[i+1] = pubkey[i]; }
         return _blake2b256_singleBlock(inBuf);
     }
 
     function _verifySuiMultiScheme(
-        string memory name,
-        uint8 chainId,
-        bytes memory canonical,         // 32B Sui addr digest (already chosen as canonical)
+        string memory /*name*/,
+        uint8 /*chainId*/,
+        bytes memory canonical,         // 32B Sui addr digest
         bytes memory publicKey,         // Ed: 32B; secp: 64/65B uncompressed
         bytes memory signature,         // Ed: 64B (R||S); secp: 64B (r||s)
         uint256 nonceVal,
         uint256 expiry,
         bytes memory providedWalletAddr // 32B address the UI passed
     ) internal {
-        string memory message = _createDomainBoundMessage(name, chainId, canonical, nonceVal, expiry);
-        // Build message encodings once for Ed25519 path. For secp path we compute inside a helper
-        // to reduce stack pressure.
-        bytes memory rawBytes = bytes(message);
-        bytes memory intentBytes = abi.encodePacked(bytes1(0x00), bytes1(0x00), bytes1(0x00), _bcsVecU8(rawBytes));
-        bytes memory simpleIntent = abi.encodePacked(bytes1(0x00), bytes1(0x00), bytes1(0x00), rawBytes);
+        // For multi-scheme flow we also use the compact SUI message
+        string memory message = _createDomainBoundMessageSuiCompact(canonical, nonceVal, expiry);
 
-        // Try Ed25519 first (32B pubkey)
+        bytes memory rawBytes = bytes(message);
+        // PersonalMessage scope 0x03 00 00
+        bytes memory intentBytes = abi.encodePacked(bytes1(0x03), bytes1(0x00), bytes1(0x00), _bcsVecU8(rawBytes));
+        bytes memory simpleIntent = abi.encodePacked(bytes1(0x03), bytes1(0x00), bytes1(0x00), rawBytes);
+
         if (publicKey.length == 32) {
             bytes32 addr = _suiAddressFromEd25519(publicKey);
             if (keccak256(abi.encodePacked(addr)) != keccak256(providedWalletAddr)) revert InvalidSignature();
-            // Accept raw, BCS intent-wrapped, or simple intent-wrapped encodings
             if (_ed25519VerifyNoRevert(message, signature, publicKey)) return;
-            string memory intentMsg = string(intentBytes);
-            if (_ed25519VerifyNoRevert(intentMsg, signature, publicKey)) return;
-            string memory simpleIntentMsg = string(simpleIntent);
-            if (_ed25519VerifyNoRevert(simpleIntentMsg, signature, publicKey)) return;
+            if (_ed25519VerifyNoRevert(string(intentBytes), signature, publicKey)) return;
+            if (_ed25519VerifyNoRevert(string(simpleIntent), signature, publicKey)) return;
             revert InvalidSignature();
         }
 
-        // Secp path is moved into a helper to avoid stack-too-deep while keeping via-ir disabled.
         if (_verifySuiSecp(message, publicKey, signature, providedWalletAddr)) return;
         revert InvalidSignature();
     }
 
-    // Refactored secp verifier for Sui: tries raw, BCS intent, and simple intent encodings
     function _verifySuiSecp(
         string memory message,
         bytes memory publicKey,
@@ -536,12 +532,13 @@ contract NominalRegistryV2 is ReentrancyGuard {
         bytes memory comp33 = _compressSecpXYTo33(Qx, yParity);
 
         bytes memory rawBytes = bytes(message);
-        bytes memory intentBytes = abi.encodePacked(bytes1(0x00), bytes1(0x00), bytes1(0x00), _bcsVecU8(rawBytes));
-        bytes memory simpleIntent = abi.encodePacked(bytes1(0x00), bytes1(0x00), bytes1(0x00), rawBytes);
+        bytes memory intentBytes = abi.encodePacked(bytes1(0x03), bytes1(0x00), bytes1(0x00), _bcsVecU8(rawBytes));
+        bytes memory simpleIntent = abi.encodePacked(bytes1(0x03), bytes1(0x00), bytes1(0x00), rawBytes);
 
-        bytes32 hRaw = sha256(rawBytes);
-        bytes32 hIntent = sha256(intentBytes);
-        bytes32 hSimple = sha256(simpleIntent);
+        // use BLAKE2b-256 for the message digest
+        bytes32 hRaw    = _blake2b256_singleBlock(rawBytes);
+        bytes32 hIntent = _blake2b256_singleBlock(intentBytes);
+        bytes32 hSimple = _blake2b256_singleBlock(simpleIntent);
 
         // k1
         if (_verifySecp256k1_ByRecover(hRaw, signature, Qx, Qy)) {
@@ -581,9 +578,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
 
     // ======= Sui IntentMessage helpers (BCS encoding) =======
 
-    // Encodes a uint as BCS ULEB128
     function _bcsUleb128(uint256 v) private pure returns (bytes memory out) {
-        // Max 10 bytes for 64-bit values; our messages are much smaller but keep generic.
         bytes memory tmp = new bytes(10);
         uint256 i = 0;
         while (true) {
@@ -597,7 +592,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
         for (uint256 j = 0; j <= i; j++) { out[j] = tmp[j]; }
     }
 
-    // Encodes a bytes payload as BCS Vec<u8>: ULEB128(len) || bytes
     function _bcsVecU8(bytes memory b) private pure returns (bytes memory out) {
         bytes memory lenEnc = _bcsUleb128(b.length);
         out = new bytes(lenEnc.length + b.length);
@@ -648,7 +642,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
         assembly { mstore(add(out33, 0x21), Qx) }
     }
 
-    // Verify k1 with ecrecover; bind to pubkey by recomputing the Ethereum addr from 0x04||X||Y
     function _verifySecp256k1_ByRecover(bytes32 h, bytes memory sig64, bytes32 Qx, bytes32 Qy) private pure returns (bool) {
         if (sig64.length != 64) return false;
         bytes32 r; bytes32 s;
@@ -656,13 +649,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
             r := mload(add(sig64, 0x20))
             s := mload(add(sig64, 0x40))
         }
-        bytes memory uncompressed = new bytes(65);
-        uncompressed[0] = 0x04;
-        assembly {
-            mstore(add(uncompressed, 0x21), Qx)
-            mstore(add(uncompressed, 0x41), Qy)
-        }
-
         bytes memory xy = new bytes(64);
         assembly {
             mstore(add(xy, 0x20), Qx)
@@ -681,7 +667,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
         return (ECDSA.recover(h, sig65) == expected);
     }
 
-    // Verify r1 via RIP-7212 precompile (0x0100). Input: [hash|r|s|Qx|Qy] -> 1 on success
     function _verifyP256_RIP7212(bytes32 h, bytes memory sig64, bytes32 Qx, bytes32 Qy) private view returns (bool ok) {
         if (sig64.length != 64) return false;
         bytes32 r; bytes32 s;
@@ -689,6 +674,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
             r := mload(add(sig64, 0x20))
             s := mload(add(sig64, 0x40))
         }
+        bytes32 out;
         bytes memory input = new bytes(160);
         assembly {
             mstore(add(input, 0x20), h)
@@ -697,7 +683,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
             mstore(add(input, 0x80), Qx)
             mstore(add(input, 0xa0), Qy)
         }
-        bytes32 out;
         bool success;
         assembly {
             success := staticcall(gas(), 0x0100, add(input, 0x20), 160, out, 0x20)
@@ -705,11 +690,10 @@ contract NominalRegistryV2 is ReentrancyGuard {
         return (success && out == bytes32(uint256(1)));
     }
 
-    // Computes blake2b-256 over input (<=128 bytes) in one block with f=true.
+    // single-block BLAKE2b-256 (limit 128B input)
     function _blake2b256_singleBlock(bytes memory input) internal view returns (bytes32 out32) {
         if (input.length > 128) revert InvalidAddress();
 
-        // IV (8 * u64)
         uint64[8] memory IV = [
             uint64(0x6a09e667f3bcc908), uint64(0xbb67ae8584caa73b),
             uint64(0x3c6ef372fe94f82b), uint64(0xa54ff53a5f1d36f1),
@@ -717,29 +701,26 @@ contract NominalRegistryV2 is ReentrancyGuard {
             uint64(0x1f83d9abfb41bd6b), uint64(0x5be0cd19137e2179)
         ];
 
-        // h state with param block for digestLen=32, fanout=1, depth=1 -> xor 0x01010020 into h0 (LE)
         uint64[8] memory hState;
         hState[0] = IV[0] ^ uint64(0x01010020);
         hState[1] = IV[1]; hState[2] = IV[2]; hState[3] = IV[3];
         hState[4] = IV[4]; hState[5] = IV[5]; hState[6] = IV[6]; hState[7] = IV[7];
 
-        // Build precompile payload (213 bytes)
         bytes memory payload = new bytes(4 + 64 + 128 + 8 + 8 + 1);
         uint256 o = 0;
 
-        _storeU32BE(payload, o, 12); o += 4; // rounds
+        _storeU32BE(payload, o, 12); o += 4;
 
         for (uint256 i = 0; i < 8; i++) { _storeU64LE(payload, o, hState[i]); o += 8; }
 
-        // message block (128B)
         for (uint256 j = 0; j < 128; j++) {
             payload[o + j] = (j < input.length) ? input[j] : bytes1(0);
         }
         o += 128;
 
-        _storeU64LE(payload, o, uint64(input.length)); o += 8; // t0
-        _storeU64LE(payload, o, 0);                     o += 8; // t1
-        payload[o] = 0x01; // f=true
+        _storeU64LE(payload, o, uint64(input.length)); o += 8;
+        _storeU64LE(payload, o, 0);                     o += 8;
+        payload[o] = 0x01;
 
         bytes32[2] memory outState;
         bool ok;
@@ -747,7 +728,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
             ok := staticcall(gas(), 0x09, add(payload, 0x20), mload(payload), outState, 0x40)
         }
         require(ok, "blake2b precompile failed");
-        out32 = outState[0]; // digest = first 32B (LE) of final state
+        out32 = outState[0];
     }
 
     function _storeU32BE(bytes memory buf, uint256 off, uint32 v) private pure {
@@ -790,7 +771,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
         return nameToChainAddress[_normalizeNameView(name)][CHAIN_SUI];
     }
 
-    // WARNING: Aptos addresses are derived off-chain from the public key. This function returns the registered public key.
     function resolveToAptos(string memory name) external view returns (bytes memory) {
         return nameToChainAddress[_normalizeNameView(name)][CHAIN_APTOS];
     }
@@ -918,7 +898,27 @@ contract NominalRegistryV2 is ReentrancyGuard {
         return addr;
     }
 
-    // Name normalization (ASCII lower + [a-z0-9-_.], no leading/trailing '-' or '.')
+    // ---------- NEW: Compact message used ONLY for SUI ----------
+    function _createDomainBoundMessageSuiCompact(
+        bytes memory canonicalAccount,
+        uint256 nonceVal,
+        uint256 expiry
+    ) internal view returns (string memory) {
+        // Keep under 128 bytes. Include acct + nonce + expiry; omit long labels.
+        // Example: "NRV2|a:0x..|n:123|e:1700000000"
+        return string(
+            abi.encodePacked(
+                "NRV2|a:",
+                _bytesToHexString(canonicalAccount),
+                "|n:",
+                Strings.toString(nonceVal),
+                "|e:",
+                Strings.toString(expiry)
+            )
+        );
+    }
+    // ------------------------------------------------------------
+
     function _normalizeNameStrict(string memory name) internal pure returns (string memory) {
         bytes memory b = bytes(name);
         if (b.length == 0) revert InvalidName();

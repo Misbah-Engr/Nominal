@@ -12,7 +12,7 @@ Instead of sharing `0x742d35Cc6F4F4F4F...` or `DRiP2Ln2P2P2P2P...`, you just tel
 
 We're live on Base Sepolia testnet:
 
-- **NominalRegistryV2**: `0x82cB475405B75848AA6416b53ad4001BD1DA8942` - Multi-chain naming registry
+- **NominalRegistryV2**: `0xBA038a80273c1B68148B95B70eC06C5567C05aD9` - Multi-chain naming registry
 - **NominalUSD Faucet**: `0x7016FcE7411CE7759c516B8E2d6Fcc40910d2017` - Test token (NUSD) with 5-hour cooldown faucet
 
 we will release the testnet webpage soon.
