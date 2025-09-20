@@ -89,7 +89,7 @@ contract NominalRegistryV2RealSignatureTest is Test {
         );
         
         // Verify registration succeeded
-        assertEq(registry.getNameOwner(name, chainId), walletAddress);
+        assertEq(registry.resolveName(name, chainId), walletAddress);
     }
 
     /**
@@ -125,7 +125,7 @@ contract NominalRegistryV2RealSignatureTest is Test {
         );
         
         // Verify registration succeeded
-        assertEq(registry.getNameOwner(name, chainId), walletAddress);
+        assertEq(registry.resolveName(name, chainId), walletAddress);
     }
 
     /**
@@ -161,6 +161,6 @@ contract NominalRegistryV2RealSignatureTest is Test {
         );
         
         // Verify registration succeeded - for Aptos, canonical identity is the public key
-        assertEq(registry.getNameOwner(name, chainId), publicKey);
+        assertEq(registry.resolveName(name, chainId), publicKey);
     }
 }

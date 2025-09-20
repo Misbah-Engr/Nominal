@@ -39,7 +39,7 @@ contract DeployBaseSepolia is Script {
         console.log("\n=== Deploying Nominal Registry V2 ===");
         NominalRegistryV2 registry = new NominalRegistryV2(ETH_FEE);
         console.log("NominalRegistryV2 deployed at:", address(registry));
-        console.log("ETH registration fee:", registry.ethFee());
+        console.log("ETH registration fee:", registry.registrationFee());
         console.log("Registry owner:", registry.contractOwner());
         
         // Configure the registry

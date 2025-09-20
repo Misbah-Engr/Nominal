@@ -10,7 +10,7 @@ import {SCL_EIP6565} from "../lib/crypto-lib/src/lib/libSCL_EIP6565.sol";
 import {SCL_sha512} from "../lib/crypto-lib/src/hash/SCL_sha512.sol";
 import {ModInv} from "../lib/crypto-lib/src/modular/SCL_modular.sol";
 import {SqrtMod} from "../lib/crypto-lib/src/modular/SCL_sqrtMod_5mod8.sol";
-import {p, n, d} from "../lib/crypto-lib/src/fields/SCL_wei25519.sol";
+import {p, d} from "../lib/crypto-lib/src/fields/SCL_wei25519.sol";
 
 library SuiIntent {
     function _uleb128(uint256 v) internal pure returns (bytes memory out) {
@@ -32,42 +32,35 @@ library SuiIntent {
 }
 
 /**
- * @title NominalRegistryV2
- * @notice A multi-chain naming registry with cryptographic verification for wallet ownership
+ * @title NominalRegistryV2 (clean)
+ * @notice Multi-chain naming registry w/ EVM, Solana (ed25519), Sui (ed25519, compact msg), Aptos (ed25519)
  */
 contract NominalRegistryV2 is ReentrancyGuard {
     using ECDSA for bytes32;
     using SafeERC20 for IERC20;
 
-    enum Chain { EVM, SOLANA, SUI, APTOS }
     uint8 public constant MAX_CHAINS = 4;
-
-    enum SignatureFormat { UTF8 }
     uint8 public constant CHAIN_EVM    = 0;
     uint8 public constant CHAIN_SOLANA = 1;
     uint8 public constant CHAIN_SUI    = 2;
     uint8 public constant CHAIN_APTOS  = 3;
 
-    // Sui multi-scheme support
-    uint8 private constant SUI_FLAG_ED25519 = 0x00;
-    uint8 private constant SUI_FLAG_K1      = 0x01;
-    uint8 private constant SUI_FLAG_R1      = 0x02;
-
     address public contractOwner;
-    uint256 public ethFee;
     bool public paused;
     address public pendingOwner;
 
+    // name → chain → canonical bytes (EVM:20, Sol:32 pubkey, Sui:32 digest, Aptos:32 pubkey)
     mapping(string => mapping(uint8 => bytes)) public nameToChainAddress;
     mapping(bytes32 => string) public addressToName;
 
+    // Fast path for EVM
     mapping(string => address) public nameToEvmAddress;
     mapping(address => string) public evmAddressToName;
 
-    // Nonces keyed by canonical identity:
-    // EVM: 20B addr; Solana: 32B pubkey; Sui: 32B addr digest; Aptos: 32B pubkey
+    // Nonces keyed by canonical identity
     mapping(uint8 => mapping(bytes => uint256)) public chainNonces;
 
+    // Providers & fees
     mapping(address => bool) public authorizedWalletProviders;
     mapping(address => uint256) public walletProviderReferralFee; // bps
 
@@ -93,23 +86,13 @@ contract NominalRegistryV2 is ReentrancyGuard {
     error InvalidAddress();
     error InvalidName();
 
-    modifier onlyOwner() {
-        if (msg.sender != contractOwner) revert Unauthorized();
-        _;
-    }
-    modifier whenNotPaused() {
-        if (paused) revert Paused();
-        _;
-    }
-    modifier validChain(uint8 chainId) {
-        if (chainId >= MAX_CHAINS) revert InvalidChain();
-        _;
-    }
+    modifier onlyOwner() { if (msg.sender != contractOwner) revert Unauthorized(); _; }
+    modifier whenNotPaused() { if (paused) revert Paused(); _; }
+    modifier validChain(uint8 chainId) { if (chainId >= MAX_CHAINS) revert InvalidChain(); _; }
 
-    constructor(uint256 _ethFee) {
+    constructor(uint256 _registrationFee) {
         contractOwner = msg.sender;
-        ethFee = _ethFee;
-        registrationFee = _ethFee;
+        registrationFee = _registrationFee;
         DOMAIN_SEPARATOR = keccak256(
             abi.encode(
                 keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
@@ -123,7 +106,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
 
     function getDomainSeparator() external view returns (bytes32) { return DOMAIN_SEPARATOR; }
 
-    // Core
+    // -------- Core --------
 
     function registerName(
         string memory name,
@@ -136,7 +119,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
         address paymentToken,
         address referrer
     ) external payable whenNotPaused validChain(chainId) nonReentrant {
-    
         name = _normalizeNameStrict(name);
 
         _validateRegistrationInput(name, walletAddress, expiry);
@@ -144,12 +126,9 @@ contract NominalRegistryV2 is ReentrancyGuard {
 
         _processPayment(paymentToken, referrer);
 
-        bytes memory canonical;
-        {
-            canonical = _canonicalAccountBytesOrRevert(chainId, walletAddress, publicKey);
-            _verifySignatureAndNonce(name, chainId, walletAddress, publicKey, signature, nonceVal, expiry, canonical);
-            _storeRegistrationCanonical(name, chainId, walletAddress, canonical);
-        }
+        bytes memory canonical = _canonicalAccountBytesOrRevert(chainId, walletAddress, publicKey);
+        _verifySignatureAndNonce(name, chainId, walletAddress, publicKey, signature, nonceVal, expiry, canonical);
+        _storeRegistrationCanonical(name, chainId, walletAddress, canonical);
 
         emit NameRegistered(name, chainId, nameToChainAddress[name][chainId], msg.sender);
     }
@@ -165,7 +144,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
         if (expiry > block.timestamp + 5 hours) revert ExpiredSignature();
     }
 
-    // Payments
+    // -------- Payments --------
 
     function _processPayment(address paymentToken, address referrer) internal {
         if (paymentToken == address(0)) {
@@ -208,6 +187,8 @@ contract NominalRegistryV2 is ReentrancyGuard {
         return (totalFee * bps) / 10000;
     }
 
+    // -------- Signature Verification & Nonces --------
+
     function _verifySignatureAndNonce(
         string memory name,
         uint8 chainId,
@@ -221,7 +202,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
         if (chainId == CHAIN_EVM) {
             _verifyEVMSignature(name, chainId, walletAddress, nonceVal, expiry, signature);
         } else if (chainId == CHAIN_SUI) {
-            // --- SUI ONLY: use compact message (≤128 bytes) ---
+            // SUI ONLY: compact message (<=128B) + intent variants + optional single-block blake2b digests
             bytes memory raw = bytes(_createDomainBoundMessageSuiCompact(canonical, nonceVal, expiry));
             bool ok = _verifySuiAll(raw, signature, publicKey);
             if (!ok) revert InvalidSignature();
@@ -232,6 +213,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
             string memory message = _createDomainBoundMessage(name, chainId, canonical, nonceVal, expiry);
             _verifyEd25519Strict(message, signature, publicKey);
         }
+
         uint256 expected = chainNonces[chainId][canonical];
         if (nonceVal != expected) revert InvalidNonce();
         chainNonces[chainId][canonical] = expected + 1;
@@ -279,7 +261,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
         return true;
     }
 
-    // Non-reverting Ed25519 verifier for alternate encodings
+    // Non-reverting Ed25519 verifier
     function _ed25519VerifyNoRevert(
         string memory message,
         bytes memory signature,
@@ -303,7 +285,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
         uint256 nonceVal,
         uint256 expiry
     ) external view returns (string memory) {
-        // Return compact preview for SUI only; others keep verbose message
         if (chainId == CHAIN_SUI) {
             return _createDomainBoundMessageSuiCompact(canonicalAccount, nonceVal, expiry);
         }
@@ -341,7 +322,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
     function _verifyAptos(
         string memory name,
         uint8 chainId,
-        bytes memory canonical,   // 32B ed25519 pubkey (canonical for Aptos)
+        bytes memory canonical,   // 32B ed25519 pubkey
         bytes memory publicKey,   // 32B ed25519
         bytes memory signature,   // 64B ed25519 (R||S)
         uint256 nonceVal,
@@ -370,7 +351,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
     }
 
     // ============= Canonical Identity & Storage =============
-
     function _canonicalAccountBytesOrRevert(
         uint8 chainId,
         bytes memory walletAddress,
@@ -424,7 +404,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
         }
     }
 
-    // Ed25519 Key Utils
+    // -------- Ed25519 Key Utils --------
     function _setupExtKpubFromCompressedKey(
         bytes memory publicKey,
         uint256[5] memory extKpub
@@ -455,6 +435,8 @@ contract NominalRegistryV2 is ReentrancyGuard {
         if ((x & 1) != sign) { x = p - x; }
     }
 
+    // -------- Sui (ed25519) --------
+
     function _verifySuiAll(bytes memory raw, bytes memory sig64, bytes memory pubkey32) internal returns (bool) {
         // Preimage candidates
         if (_ed25519VerifyNoRevert(string(raw), sig64, pubkey32)) return true;
@@ -465,7 +447,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
 
         // Digest candidates (only valid when ≤128 bytes because of single-block hasher)
         if (raw.length <= 128) {
-            bytes memory hRaw    = abi.encodePacked(_blake2b256_singleBlock(raw));
+            bytes memory hRaw = abi.encodePacked(_blake2b256_singleBlock(raw));
             if (_ed25519VerifyNoRevert(string(hRaw), sig64, pubkey32)) return true;
         }
         if (intent.length <= 128) {
@@ -476,218 +458,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
             bytes memory hSimple = abi.encodePacked(_blake2b256_singleBlock(simple));
             if (_ed25519VerifyNoRevert(string(hSimple), sig64, pubkey32)) return true;
         }
-
         return false;
-    }
-
-    // SUI (BLAKE2b-256 via EIP-152)
-
-    function _suiAddressFromPubkey(bytes memory pubkey) internal view returns (bytes32) {
-        if (pubkey.length != 32) revert InvalidAddress();
-        bytes memory inBuf = new bytes(33);
-        inBuf[0] = 0x00; // Ed25519 flag
-        for (uint256 i = 0; i < 32; i++) { inBuf[i+1] = pubkey[i]; }
-        return _blake2b256_singleBlock(inBuf);
-    }
-
-    function _verifySuiMultiScheme(
-        string memory /*name*/,
-        uint8 /*chainId*/,
-        bytes memory canonical,         // 32B Sui addr digest
-        bytes memory publicKey,         // Ed: 32B; secp: 64/65B uncompressed
-        bytes memory signature,         // Ed: 64B (R||S); secp: 64B (r||s)
-        uint256 nonceVal,
-        uint256 expiry,
-        bytes memory providedWalletAddr // 32B address the UI passed
-    ) internal {
-        // For multi-scheme flow we also use the compact SUI message
-        string memory message = _createDomainBoundMessageSuiCompact(canonical, nonceVal, expiry);
-
-        bytes memory rawBytes = bytes(message);
-        // PersonalMessage scope 0x03 00 00
-        bytes memory intentBytes = abi.encodePacked(bytes1(0x03), bytes1(0x00), bytes1(0x00), _bcsVecU8(rawBytes));
-        bytes memory simpleIntent = abi.encodePacked(bytes1(0x03), bytes1(0x00), bytes1(0x00), rawBytes);
-
-        if (publicKey.length == 32) {
-            bytes32 addr = _suiAddressFromEd25519(publicKey);
-            if (keccak256(abi.encodePacked(addr)) != keccak256(providedWalletAddr)) revert InvalidSignature();
-            if (_ed25519VerifyNoRevert(message, signature, publicKey)) return;
-            if (_ed25519VerifyNoRevert(string(intentBytes), signature, publicKey)) return;
-            if (_ed25519VerifyNoRevert(string(simpleIntent), signature, publicKey)) return;
-            revert InvalidSignature();
-        }
-
-        if (_verifySuiSecp(message, publicKey, signature, providedWalletAddr)) return;
-        revert InvalidSignature();
-    }
-
-    function _verifySuiSecp(
-        string memory message,
-        bytes memory publicKey,
-        bytes memory signature,
-        bytes memory providedWalletAddr
-    ) private view returns (bool) {
-        (bytes32 Qx, bytes32 Qy, uint8 yParity, bool ok) = _parseSecpUncompressed(publicKey);
-        if (!ok) return false;
-        bytes memory comp33 = _compressSecpXYTo33(Qx, yParity);
-
-        bytes memory rawBytes = bytes(message);
-        bytes memory intentBytes = abi.encodePacked(bytes1(0x03), bytes1(0x00), bytes1(0x00), _bcsVecU8(rawBytes));
-        bytes memory simpleIntent = abi.encodePacked(bytes1(0x03), bytes1(0x00), bytes1(0x00), rawBytes);
-
-        // use BLAKE2b-256 for the message digest
-        bytes32 hRaw    = _blake2b256_singleBlock(rawBytes);
-        bytes32 hIntent = _blake2b256_singleBlock(intentBytes);
-        bytes32 hSimple = _blake2b256_singleBlock(simpleIntent);
-
-        // k1
-        if (_verifySecp256k1_ByRecover(hRaw, signature, Qx, Qy)) {
-            bytes32 addrK1 = _suiAddressFromFlagAndCompressed(SUI_FLAG_K1, comp33);
-            if (keccak256(abi.encodePacked(addrK1)) != keccak256(providedWalletAddr)) return false;
-            return true;
-        }
-        if (_verifySecp256k1_ByRecover(hIntent, signature, Qx, Qy)) {
-            bytes32 addrK1b = _suiAddressFromFlagAndCompressed(SUI_FLAG_K1, comp33);
-            if (keccak256(abi.encodePacked(addrK1b)) != keccak256(providedWalletAddr)) return false;
-            return true;
-        }
-        if (_verifySecp256k1_ByRecover(hSimple, signature, Qx, Qy)) {
-            bytes32 addrK1c = _suiAddressFromFlagAndCompressed(SUI_FLAG_K1, comp33);
-            if (keccak256(abi.encodePacked(addrK1c)) != keccak256(providedWalletAddr)) return false;
-            return true;
-        }
-
-        // r1
-        if (_verifyP256_RIP7212(hRaw, signature, Qx, Qy)) {
-            bytes32 addrR1 = _suiAddressFromFlagAndCompressed(SUI_FLAG_R1, comp33);
-            if (keccak256(abi.encodePacked(addrR1)) != keccak256(providedWalletAddr)) return false;
-            return true;
-        }
-        if (_verifyP256_RIP7212(hIntent, signature, Qx, Qy)) {
-            bytes32 addrR1b = _suiAddressFromFlagAndCompressed(SUI_FLAG_R1, comp33);
-            if (keccak256(abi.encodePacked(addrR1b)) != keccak256(providedWalletAddr)) return false;
-            return true;
-        }
-        if (_verifyP256_RIP7212(hSimple, signature, Qx, Qy)) {
-            bytes32 addrR1c = _suiAddressFromFlagAndCompressed(SUI_FLAG_R1, comp33);
-            if (keccak256(abi.encodePacked(addrR1c)) != keccak256(providedWalletAddr)) return false;
-            return true;
-        }
-        return false;
-    }
-
-    // ======= Sui IntentMessage helpers (BCS encoding) =======
-
-    function _bcsUleb128(uint256 v) private pure returns (bytes memory out) {
-        bytes memory tmp = new bytes(10);
-        uint256 i = 0;
-        while (true) {
-            uint8 b = uint8(v & 0x7f);
-            v >>= 7;
-            if (v != 0) { tmp[i] = bytes1(b | 0x80); }
-            else { tmp[i] = bytes1(b); break; }
-            unchecked { i++; }
-        }
-        out = new bytes(i + 1);
-        for (uint256 j = 0; j <= i; j++) { out[j] = tmp[j]; }
-    }
-
-    function _bcsVecU8(bytes memory b) private pure returns (bytes memory out) {
-        bytes memory lenEnc = _bcsUleb128(b.length);
-        out = new bytes(lenEnc.length + b.length);
-        uint256 o = 0;
-        for (uint256 i = 0; i < lenEnc.length; i++) { out[o++] = lenEnc[i]; }
-        for (uint256 j = 0; j < b.length; j++) { out[o++] = b[j]; }
-    }
-
-    function _suiAddressFromEd25519(bytes memory pub32) private view returns (bytes32) {
-        if (pub32.length != 32) revert InvalidAddress();
-        bytes memory inBuf = new bytes(33);
-        inBuf[0] = bytes1(uint8(SUI_FLAG_ED25519));
-        for (uint256 i=0;i<32;i++){ inBuf[i+1]=pub32[i]; }
-        return _blake2b256_singleBlock(inBuf);
-    }
-
-    function _suiAddressFromFlagAndCompressed(uint8 flag, bytes memory comp33) private view returns (bytes32) {
-        if (comp33.length != 33) revert InvalidAddress();
-        bytes memory inBuf = new bytes(34);
-        inBuf[0] = bytes1(flag);
-        for (uint256 i=0;i<33;i++){ inBuf[i+1]=comp33[i]; }
-        return _blake2b256_singleBlock(inBuf);
-    }
-
-    function _parseSecpUncompressed(bytes memory pubkey) private pure returns (bytes32 Qx, bytes32 Qy, uint8 yParity, bool ok) {
-        if (pubkey.length == 65) {
-            if (pubkey[0] != 0x04) return (Qx,Qy,0,false);
-            assembly {
-                Qx := mload(add(pubkey, 0x21))
-                Qy := mload(add(pubkey, 0x41))
-            }
-            yParity = uint8(uint256(Qy) & 1);
-            return (Qx,Qy,yParity,true);
-        } else if (pubkey.length == 64) {
-            assembly {
-                Qx := mload(add(pubkey, 0x20))
-                Qy := mload(add(pubkey, 0x40))
-            }
-            yParity = uint8(uint256(Qy) & 1);
-            return (Qx,Qy,yParity,true);
-        }
-        return (Qx,Qy,0,false);
-    }
-
-    function _compressSecpXYTo33(bytes32 Qx, uint8 yParity) private pure returns (bytes memory out33) {
-        out33 = new bytes(33);
-        out33[0] = (yParity == 0) ? bytes1(0x02) : bytes1(0x03);
-        assembly { mstore(add(out33, 0x21), Qx) }
-    }
-
-    function _verifySecp256k1_ByRecover(bytes32 h, bytes memory sig64, bytes32 Qx, bytes32 Qy) private pure returns (bool) {
-        if (sig64.length != 64) return false;
-        bytes32 r; bytes32 s;
-        assembly {
-            r := mload(add(sig64, 0x20))
-            s := mload(add(sig64, 0x40))
-        }
-        bytes memory xy = new bytes(64);
-        assembly {
-            mstore(add(xy, 0x20), Qx)
-            mstore(add(xy, 0x40), Qy)
-        }
-        address expected = address(uint160(uint256(keccak256(xy))));
-
-        bytes memory sig65 = new bytes(65);
-        assembly {
-            mstore(add(sig65, 0x20), r)
-            mstore(add(sig65, 0x40), s)
-        }
-        sig65[64] = 0x1b;
-        if (ECDSA.recover(h, sig65) == expected) return true;
-        sig65[64] = 0x1c;
-        return (ECDSA.recover(h, sig65) == expected);
-    }
-
-    function _verifyP256_RIP7212(bytes32 h, bytes memory sig64, bytes32 Qx, bytes32 Qy) private view returns (bool ok) {
-        if (sig64.length != 64) return false;
-        bytes32 r; bytes32 s;
-        assembly {
-            r := mload(add(sig64, 0x20))
-            s := mload(add(sig64, 0x40))
-        }
-        bytes32 out;
-        bytes memory input = new bytes(160);
-        assembly {
-            mstore(add(input, 0x20), h)
-            mstore(add(input, 0x40), r)
-            mstore(add(input, 0x60), s)
-            mstore(add(input, 0x80), Qx)
-            mstore(add(input, 0xa0), Qy)
-        }
-        bool success;
-        assembly {
-            success := staticcall(gas(), 0x0100, add(input, 0x20), 160, out, 0x20)
-        }
-        return (success && out == bytes32(uint256(1)));
     }
 
     // single-block BLAKE2b-256 (limit 128B input)
@@ -749,11 +520,7 @@ contract NominalRegistryV2 is ReentrancyGuard {
         buf[off+7] = bytes1(uint8(v >> 56));
     }
 
-    // Views 
-
-    function getNameOwner(string memory name, uint8 chainId) external view returns (bytes memory) {
-        return nameToChainAddress[_normalizeNameView(name)][chainId];
-    }
+    // -------- Views --------
 
     function resolveName(string memory name, uint8 chainId) external view returns (bytes memory) {
         return nameToChainAddress[_normalizeNameView(name)][chainId];
@@ -817,13 +584,10 @@ contract NominalRegistryV2 is ReentrancyGuard {
     function getNonce(uint8 chainId, bytes memory walletAddress) external view returns (uint256) {
         return chainNonces[chainId][walletAddress];
     }
-    function getNextNonce(uint8 chainId, bytes memory walletAddress) external view returns (uint256) {
-        return chainNonces[chainId][walletAddress];
-    }
 
-    // =================== Owner/Admin ===================
+    // -------- Owner/Admin --------
 
-    function setRegistrationFee(uint256 _fee) external onlyOwner { registrationFee = _fee; ethFee = _fee; }
+    function setRegistrationFee(uint256 _fee) external onlyOwner { registrationFee = _fee; }
     function pause() external onlyOwner { paused = true; }
     function unpause() external onlyOwner { paused = false; }
 
@@ -873,11 +637,10 @@ contract NominalRegistryV2 is ReentrancyGuard {
         }
     }
 
-    function emergencyPause() external onlyOwner { paused = true; }
-    function getContractBalance() external view onlyOwner returns (uint256) { return address(this).balance; }
-    function getTokenBalance(address token) external view onlyOwner returns (uint256) { return IERC20(token).balanceOf(address(this)); }
+    function getContractBalance() external view returns (uint256) { return address(this).balance; }
+    function getTokenBalance(address token) external view returns (uint256) { return IERC20(token).balanceOf(address(this)); }
 
-    // =================== Helpers ===================
+    // -------- Helpers --------
 
     function _bytesToHexString(bytes memory data) internal pure returns (string memory) {
         bytes memory alphabet = "0123456789abcdef";
@@ -898,13 +661,12 @@ contract NominalRegistryV2 is ReentrancyGuard {
         return addr;
     }
 
-    // ---------- NEW: Compact message used ONLY for SUI ----------
+    // Compact message used ONLY for SUI (keep under 128B)
     function _createDomainBoundMessageSuiCompact(
         bytes memory canonicalAccount,
         uint256 nonceVal,
         uint256 expiry
     ) internal view returns (string memory) {
-        // Keep under 128 bytes. Include acct + nonce + expiry; omit long labels.
         // Example: "NRV2|a:0x..|n:123|e:1700000000"
         return string(
             abi.encodePacked(
@@ -917,7 +679,6 @@ contract NominalRegistryV2 is ReentrancyGuard {
             )
         );
     }
-    // ------------------------------------------------------------
 
     function _normalizeNameStrict(string memory name) internal pure returns (string memory) {
         bytes memory b = bytes(name);

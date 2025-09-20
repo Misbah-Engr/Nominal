@@ -326,7 +326,7 @@ contract NominalRegistryV2BusinessLogicTest is Test {
         
         // Emergency pause should also work
         vm.prank(admin);
-        registry.emergencyPause();
+        registry.pause();
         assertTrue(registry.paused(), "Contract should be paused via emergency");
     }
 
@@ -344,7 +344,7 @@ contract NominalRegistryV2BusinessLogicTest is Test {
         // Non-admin tries emergency pause
         vm.expectRevert(abi.encodeWithSignature("Unauthorized()"));
         vm.prank(user);
-        registry.emergencyPause();
+        registry.pause();
     }
 
     function testOwnershipTransfer() public {
